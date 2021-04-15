@@ -751,7 +751,7 @@ def main(f, final_lst):
                         threshold)
 
             # Contour detection logic
-            contours, hierarchy = cv2.findContours(threshold, cv2.RETR_TREE,
+            contours, hierarchy = cv2.findContours(threshold, cv2.RETR_EXTERNAL,
                                                 cv2.CHAIN_APPROX_SIMPLE)
 
             if contours_details_reporting is True:

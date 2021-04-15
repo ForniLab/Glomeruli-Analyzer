@@ -1,4 +1,4 @@
-# Version 4.0.1
+# Labview Compatible Version 2.8.3
 
 import glob
 import os
@@ -11,22 +11,11 @@ import tifffile as tiff
 import matplotlib.pyplot as plt
 from datetime import timedelta
 from PIL import Image
-from statistics import mean
 
 import cv2
 import numpy as np
-import shutil
-from multiprocessing import Process, Manager
-from setting_batch import *
-from os import walk
+from setting import *
 
-# Start Measuring Time
-start_time = time.monotonic()
-
-files = []
-for (dirpath, dirnames, filenames) in walk(image_source_folder):
-    files.extend(filenames)
-    break
 
 # ----------------------------------
 # if __name__ == "__main__":
@@ -39,23 +28,38 @@ sys.path.append(sys_path)
 # ----------------------------------
 
 from utils.contour_utils.contourutil import ContourUtil
-warnings.filterwarnings("ignore",
-                        message="invalid value encountered in greater_equal")
-warnings.filterwarnings("ignore",
-                        message="invalid value encountered in less_equal")
+
+warnings.filterwarnings("ignore", message="invalid value encountered in greater_equal")
+warnings.filterwarnings("ignore", message="invalid value encountered in less_equal")
 
 
-def file_extention_check(filepath, filename):
+# ----------------------Setting--------------------------------------------
+scriptDir = os.path.dirname(os.path.realpath(__file__))
+filepath = os.path.join(image_source_folder, image_file_name)
+
+if enable_hist_generator is True:
+    fig1 = plt.figure(1, figsize=[6.4, 4.8], dpi=800)
+    fig2 = plt.figure(2, figsize=[6.4, 4.8], dpi=800)
+# ------------------ File Extension Checker--------------------------------
+
+# Start Measuring Time
+start_time = time.monotonic()
+# global main
+
+
+def file_extention_check(filepath):
     global ext, image, actual_channels_number
     # Now we can simply use == to check for equality, no need for wildcards.
     if os.path.splitext(filepath)[1] == ".png":
-        message_out.append("Source is an PNG!")
+        print("Source is an PNG!")
         ext = "png"
         # Import file
         image = cv2.imread(filepath)
 
-    elif (os.path.splitext(filepath)[1] == ".tif"
-          or os.path.splitext(filepath)[1] == ".tiff"):
+    elif (
+        os.path.splitext(filepath)[1] == ".tif"
+        or os.path.splitext(filepath)[1] == ".tiff"
+    ):
         # print ("Source is an TIF!")
         ext = "tif"
 
@@ -63,7 +67,7 @@ def file_extention_check(filepath, filename):
         dataset = Image.open(filepath)
 
         if len(np.shape(dataset)) == 2:
-            message_out.append("It's a normal TIF file.")
+            print("It's a normal TIF file.")
             h, w = np.shape(dataset)
             tiffarray = np.zeros((h, w, dataset.n_frames))
             for i in range(dataset.n_frames):
@@ -74,50 +78,24 @@ def file_extention_check(filepath, filename):
 
             # Color Correction process
             """
-            Recepie:
-            Here are the TIFs. In these files,
-            channels 1 (green),
-            channel 2 (gray is what we've been calling blue)
-            channel 4 (red)
-            """
+			Recepie:
+			Here are the TIFs. In these files,
+			channels 1 (green),
+			channel 2 (gray is what we've been calling blue)
+			channel 4 (red)
+			"""
             image_with_alpha_correct_color_order = np.zeros(
-                image_with_alpha.shape).astype(np.uint8)
+                image_with_alpha.shape
+            ).astype(np.uint8)
+            image_with_alpha_correct_color_order[:, :, 0] = image_with_alpha[:, :, 1]
+            image_with_alpha_correct_color_order[:, :, 1] = image_with_alpha[:, :, 0]
+            image_with_alpha_correct_color_order[:, :, 2] = image_with_alpha[:, :, 3]
+            image_with_alpha_correct_color_order[:, :, 3] = image_with_alpha[:, :, 2]
 
-            if (image_with_alpha.shape[2] == 4):
-                image_with_alpha_correct_color_order[:, :,
-                                                     0] = image_with_alpha[:, :,
-                                                                           order_recepie[0]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     1] = image_with_alpha[:, :,
-                                                                           order_recepie[1]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     2] = image_with_alpha[:, :,
-                                                                           order_recepie[2]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     3] = image_with_alpha[:, :,
-                                                                           ch_to_ignore]
-
-                # Recording actual channel number
-                actual_channels_number = image_with_alpha_correct_color_order.shape[
-                    2]
-                # Reducing number of channels to 3
-                image = image_with_alpha_correct_color_order[:, :, :3]
-            else:
-                image_with_alpha_correct_color_order[:, :,
-                                                     0] = image_with_alpha[:, :,
-                                                                           order_recepie[0]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     1] = image_with_alpha[:, :,
-                                                                           order_recepie[1]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     2] = image_with_alpha[:, :,
-                                                                           order_recepie[2]]
-
-                # Recording actual channel number
-                actual_channels_number = image_with_alpha_correct_color_order.shape[
-                    2]
-                # Reducing number of channels to 3
-                image = image_with_alpha_correct_color_order[:, :, :3]
+            # Recording actual channel number
+            actual_channels_number = image_with_alpha_correct_color_order.shape[2]
+            # Reducing number of channels to 3
+            image = image_with_alpha_correct_color_order[:, :, :3]
 
             if transparent_corrector is True:
                 img = transparent_corrector(image)
@@ -127,54 +105,28 @@ def file_extention_check(filepath, filename):
                 zero_pixel_count(image)
 
         elif len(np.shape(dataset)) == 3:
-            message_out.append("It's an altered TIF file.")
+            print("It's an altered TIF file.")
             dataset = np.asanyarray(dataset)
             image_with_alpha = dataset.astype(np.uint8)
+
             image_with_alpha_correct_color_order = np.zeros(
-                image_with_alpha.shape).astype(np.uint8)
+                image_with_alpha.shape
+            ).astype(np.uint8)
+            image_with_alpha_correct_color_order[:, :, 0] = image_with_alpha[:, :, 1]
+            image_with_alpha_correct_color_order[:, :, 1] = image_with_alpha[:, :, 0]
+            image_with_alpha_correct_color_order[:, :, 2] = image_with_alpha[:, :, 3]
+            image_with_alpha_correct_color_order[:, :, 3] = image_with_alpha[:, :, 2]
 
-            if (image_with_alpha.shape[0] == 4):
-                image_with_alpha_correct_color_order[:, :,
-                                                     0] = image_with_alpha[:, :,
-                                                                           order_recepie[0]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     1] = image_with_alpha[:, :,
-                                                                           order_recepie[1]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     2] = image_with_alpha[:, :,
-                                                                           order_recepie[2]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     3] = image_with_alpha[:, :,
-                                                                           ch_to_ignore]
-
-                # Recording actual channel number
-                actual_channels_number = image_with_alpha_correct_color_order.shape[
-                    2]
-                # Reducing number of channels to 3
-                tif_normal = True
-                image = image_with_alpha_correct_color_order[:, :, :3]
-            else:
-                image_with_alpha_correct_color_order[:, :,
-                                                     0] = image_with_alpha[:, :,
-                                                                           order_recepie[0]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     1] = image_with_alpha[:, :,
-                                                                           order_recepie[1]]
-                image_with_alpha_correct_color_order[:, :,
-                                                     2] = image_with_alpha[:, :,
-                                                                           order_recepie[2]]
-                # Recording actual channel number
-                actual_channels_number = image_with_alpha_correct_color_order.shape[
-                    2]
-                # Reducing number of channels to 3
-                tif_normal = True
-                image = image_with_alpha_correct_color_order[:, :, :3]
+            print(image_with_alpha_correct_color_order[:, :, 2])
+            # Recording actual channel number
+            actual_channels_number = image_with_alpha_correct_color_order.shape[2]
+            # Reducing number of channels to 3
+            tif_normal = True
+            image = image_with_alpha_correct_color_order[:, :, :3]
 
     else:
-        message_out.append(
-            "Warning! The extension is not neither PNG nor TIF!")
+        print("Warning! The extension is not neither PNG nor TIF!")
 
-    message_out.append(filename)
     return
 
 
@@ -208,7 +160,7 @@ def zero_pixel_count(image):
     for item in datas:
         if item[0] == 0 and item[1] == 0 and item[2] == 0:
             count += count
-    message_out.append("Total pure zero pixels are: " + str(count))
+    print("Total pure zero pixels are: ", count)
 
     return
 
@@ -227,17 +179,19 @@ def image_information(image):
     main_width = main_dimensions[1]
     main_channels = main_dimensions[2]
 
-    message_out.append("Image Information: --------------------")
-    message_out.append("Image Dimension    : " + str(main_dimensions))
-    message_out.append("Image Height       : " + str(main_height))
-    message_out.append("Image Width        : " + str(main_width))
-    message_out.append("Number of Channels : " + str(main_channels))
+    print("Image Information: --------------------")
+    print("Image Dimension    : ", main_dimensions)
+    print("Image Height       : ", main_height)
+    print("Image Width        : ", main_width)
+    print("Number of Channels : ", main_channels)
     if ext == "tif" or ext == "tiff":
         if actual_channels_number > 3:
-            message_out.append("Actually channel number was" +
-                               str(actual_channels_number) +
-                               "but we have igonred one of them!")
-    message_out.append("---------------------------------------")
+            print(
+                "Actually channel number was",
+                actual_channels_number,
+                "but we have igonred one of them!",
+            )
+    print("---------------------------------------")
 
     return
 
@@ -246,10 +200,9 @@ def image_information(image):
 
 
 def output_generator():
-    output_filename = image_file_name + ".txt"
-    if os.path.exists('outputs/' + output_filename):
-        os.remove('outputs/' + output_filename)  # this deletes the file
-    output_txt = open('outputs/' + output_filename, "x")
+    if os.path.exists("output.txt"):
+        os.remove("output.txt")  # this deletes the file
+    output_txt = open("output.txt", "x")
     output_txt.write("Size\t%R\t%B\t%G\tAvg-R\tAvg-B\tAvg-G\n")
     output_txt.close
 
@@ -259,12 +212,10 @@ def output_generator():
 # --------------- Clean Output Folder --------------------------------------
 
 
-def output_cleaner():
-    """ filelist = glob.glob(os.path.join(path_output, "*.*"))
+def output_cleaner(path_output):
+    filelist = glob.glob(os.path.join(path_output, "*.png"))
     for f in filelist:
-        os.remove(f) """
-    shutil.rmtree('outputs')
-    os.makedirs('outputs')
+        os.remove(f)
 
     return
 
@@ -312,7 +263,7 @@ def threshold_apply(switch, adpthr, statthr):
             255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
-            blockSize=block_size, # it reads the setting
+            blockSize=101,
             C=-adpthr,
         )
     else:
@@ -336,7 +287,7 @@ def size_filter(cnts, minsz, mazsz):
             filtered_cnts.append(cnts[i])
             cnts_size.append(size)
 
-    message_out.append("َAfter 1st filter by size:" + str(len(filtered_cnts)))
+    print("َAfter 1st filter by size:", len(filtered_cnts))
     return cnts_size, filtered_cnts
 
 
@@ -359,14 +310,11 @@ def ratio_filter(cnts, ctns_size, margin):
         if P_to_S_ratio[i] < (Max_Ratio - margin * Std_Ratio):
             filtered_cnts.append(cnts[i])
 
-    message_out.append("Max Ratio:" + str(max(P_to_S_ratio)))
-    message_out.append("Standard Deviation:" +
-                       str(statistics.stdev(P_to_S_ratio)))
+    print("Max Ratio:", max(P_to_S_ratio))
+    print("Standard Deviation:", statistics.stdev(P_to_S_ratio))
 
-    message = "\t(" + str(len(cnts) -
-                          len(filtered_cnts)) + " has been removed!)"
-    message_out.append("َAfter 2st filter by ratio:" +
-                       str(len(filtered_cnts)) + message)
+    message = "\t(" + str(len(cnts) - len(filtered_cnts)) + " has been removed!)"
+    print("َAfter 2st filter by ratio:", len(filtered_cnts), message)
     return filtered_cnts, len(filtered_cnts)
 
 
@@ -397,9 +345,6 @@ def ellipticity_filter(cnts, hist_switch, hist_order, ch, crc, cre):
 
     # Histogram Generator ----------------------------------------
     if hist_switch is True:
-        fig1 = plt.figure(1, figsize=[6.4, 4.8], dpi=800)
-        fig2 = plt.figure(2, figsize=[6.4, 4.8], dpi=800)
-        
         ax = fig1.add_subplot(3, 1, hist_order)
         ax.hist(extent, density=False, bins=num_bins, rwidth=0.7)
         ax.set_title(label="Channel {}".format(ch))
@@ -416,21 +361,14 @@ def ellipticity_filter(cnts, hist_switch, hist_order, ch, crc, cre):
         if hist_order == 3:
             bx.set_xlabel("(minor)/(major) Ratio")
         fig2.tight_layout()
-        
-        fig1.savefig(os.path.join(path_output, "circular ratio hist.png"))
-        fig2.savefig(os.path.join(path_output, "ellipticity ratio.png"))
-        plt.close(fig1)
-        plt.close(fig2)
     # -----------------------------------------------------------
 
     for i in range(n):
         if (extent[i] >= crc) and (extent_ellipse[i] >= cre):
             filtered_cnts.append(cnts[i])
 
-    message = "\t(" + str(len(cnts) -
-                          len(filtered_cnts)) + " has been removed!)"
-    message_out.append("َAfter 3st filter by ellipticity:" +
-                       str(len(filtered_cnts)) + message)
+    message = "\t(" + str(len(cnts) - len(filtered_cnts)) + " has been removed!)"
+    print("َAfter 3st filter by ellipticity:", len(filtered_cnts), message)
 
     return filtered_cnts
 
@@ -444,6 +382,9 @@ def selection_filter(cnts, ch, img, pthout, gborders, thinkness):
     imgcopy = img.copy()
 
     contour_label = 0
+    text_file = open("filter-number-{}.txt".format(ch), "r")
+    num_to_remover = text_file.read().split(",")
+    num_to_remover = [int(i) for i in num_to_remover]
 
     # cnts = imutils.grab_contours(cnts)
     for c in cnts:
@@ -459,8 +400,8 @@ def selection_filter(cnts, ch, img, pthout, gborders, thinkness):
                 str(contour_label),
                 (cX + 10, cY + 10),
                 cv2.FONT_HERSHEY_PLAIN,
-                1,
-                (255, 255, 255),
+                0.8,
+                (128, 0, 128),
                 1,
             )
         elif cX < 10:
@@ -469,8 +410,8 @@ def selection_filter(cnts, ch, img, pthout, gborders, thinkness):
                 str(contour_label),
                 (cX + 10, cY - 5),
                 cv2.FONT_HERSHEY_PLAIN,
-                1,
-                (255, 255, 255),
+                0.8,
+                (128, 0, 128),
                 1,
             )
         elif cY < 10:
@@ -479,8 +420,8 @@ def selection_filter(cnts, ch, img, pthout, gborders, thinkness):
                 str(contour_label),
                 (cX - 5, cY + 10),
                 cv2.FONT_HERSHEY_PLAIN,
-                1,
-                (255, 255, 255),
+                0.8,
+                (128, 0, 128),
                 1,
             )
         else:
@@ -489,36 +430,29 @@ def selection_filter(cnts, ch, img, pthout, gborders, thinkness):
                 str(contour_label),
                 (cX - 5, cY - 5),
                 cv2.FONT_HERSHEY_PLAIN,
-                1,
-                (255, 255, 255),
+                0.8,
+                (128, 0, 128),
                 1,
             )
 
         contour_label += 1
 
-    cv2.imwrite(os.path.join(pthout, "Channel-{}-labled.png".format(ch)),
-                imgcopy)
+    cv2.imwrite(os.path.join(pthout, "Channel-{}-labled.png".format(ch)), imgcopy)
     user_ready = "n"
     while user_ready != "y":
         user_ready = input(
-            "Please prepare filter-number-{}.txt and enter 'y': ".format(ch))
-
-    text_file = open("filter-number-{}.txt".format(ch), "r")
-
-    num_to_remover = text_file.read().split(",")
-    num_to_remover = [int(i) for i in num_to_remover]
+            "Please prepare filter-number-{}.txt and enter 'y': ".format(ch)
+        )
 
     for j in range(len(cnts)):
         if j not in num_to_remover:
             filtered_cnts.append(cnts[j])
         else:
-            message_out.append("Contour #" + str(j) +
-                               "in Channel-{} removed.".format(ch))
+            print("Contour #", j, "in Channel-{} removed.".format(ch))
 
     flt_img = cv2.drawContours(flt_img, filtered_cnts, -1, gborders, thinkness)
 
-    cv2.imwrite(os.path.join(pthout, "{}-Bordered-removed.png".format(ch)),
-                flt_img)
+    cv2.imwrite(os.path.join(pthout, "{}-Bordered-removed.png".format(ch)), flt_img)
 
     return filtered_cnts
 
@@ -531,8 +465,7 @@ def most_bigest_contours_drawer(img, cnts, brcolor, fillbg, ptout, ch, n):
 
     for i in range(0, n):
         sample = cv2.drawContours(sample, cnts, i, brcolor, fillbg)
-    cv2.imwrite(os.path.join(ptout, "Biggest_Contour(s)_{}.png".format(ch)),
-                sample)
+    cv2.imwrite(os.path.join(ptout, "Biggest_Contour(s)_{}.png".format(ch)), sample)
 
     return
 
@@ -540,7 +473,7 @@ def most_bigest_contours_drawer(img, cnts, brcolor, fillbg, ptout, ch, n):
 # ------------- Color Combination Calculator--------------------------------
 def report_contours_point(cnts):
 
-    text_file = open("contour_list.txt", "w")  # Write the
+    text_file = open("contour_list.txt", "w")  ##### Write the
     text_file.write("%s" % cnts)
     text_file.close()
 
@@ -552,10 +485,6 @@ def report_contours_point(cnts):
 
 def color_combination_calculator(cnts, img):
     contour_util = ContourUtil()
-
-    result_list = [[], [], [], []]
-    text = ''
-
     for i in range(len(cnts)):
         # Generating mask
         masked = contour_util.create_contour_mask(img, cnts[i])
@@ -581,29 +510,34 @@ def color_combination_calculator(cnts, img):
         Blue_perc = round(c_avg[0] / total_avg * 100, 2)
         Green_perc = round(c_avg[1] / total_avg * 100, 2)
 
-        result_list[0].append(cv2.contourArea(cnts[i]))
-        result_list[1].append(c_avg[2])
-        result_list[2].append(c_avg[0])
-        result_list[3].append(c_avg[1])
-
         # Display color percentage for debug
         """ print("Total Avg :", total_avg)
-        print("% Blue :", Blue_perc)
-        print("% Green :", Green_perc)
-        print("% Red :", Red_perc) """
+		print("% Blue :", Blue_perc)
+		print("% Green :", Green_perc)
+		print("% Red :", Red_perc) """
 
-        if detailed_output:
-            text = text + (str(cv2.contourArea(cnts[i])) + "\t" +
-                           str(Red_perc) + "\t" + str(Blue_perc) + "\t" +
-                           str(Green_perc) + "\t" + str(c_avg[2]) + "\t" +
-                           str(c_avg[0]) + "\t" + str(c_avg[1]) + "\n")
+        output_txt = open("output.txt", "a")
+        text = (
+            str(cv2.contourArea(cnts[i]))
+            + "\t"
+            + str(Red_perc)
+            + "\t"
+            + str(Blue_perc)
+            + "\t"
+            + str(Green_perc)
+            + "\t"
+            + str(c_avg[2])
+            + "\t"
+            + str(c_avg[0])
+            + "\t"
+            + str(c_avg[1])
+            + "\n"
+        )
 
-    if detailed_output:
-        output_txt = open('outputs/' + image_file_name + ".txt", "a")
         output_txt.write(text)
         output_txt.close
 
-    return result_list
+    return
 
 
 # ------------ Generating Transparent Overlay layer image------------------
@@ -615,40 +549,9 @@ def transparent_layer_generator(img, ptout):
     b, g, r = cv2.split(img)
     rgba = [b, g, r, alpha]
     transparent_overlay = cv2.merge(rgba, 4)
-    cv2.imwrite(os.path.join(ptout, "transparent-overlay.png"),
-                transparent_overlay)
+    cv2.imwrite(os.path.join(ptout, "transparent-overlay.png"), transparent_overlay)
 
     return
-
-
-# -------------------- Void Overlay Remover ------------------------------
-
-
-def hierarchy_sorter(cnts_untouched, cnts_sorted, hier):
-
-    result = []
-    list_length = len(a)
-    for i in range(list_length):
-        result.append(max(a[i], b[i]))
-
-    message_out.append(result[0])
-    sz = []
-    for i in range(len(cnts_untouched)):
-        sz.append(cv2.contourArea(cnts_untouched[i]))
-
-    newlist = map(list, zip(cnts_untouched, hier))
-    inner_contours, new_hierarchy = map(
-        *sorted(newlist, key=lambda x: (x[0]), reverse=True))
-
-    # return the list of sorted contours
-    message_out.append(inner_contours)
-    """ inner_contours = []
-    new_hierarchy = []
-    
-    inner_contours.append(cnts_untouched[1])
-    new_hierarchy.append(hier[0][1]) """
-
-    return inner_contours, np.array(new_hierarchy, dtype=np.int32)
 
 
 # -------------------- Void Overlay Remover ------------------------------
@@ -667,297 +570,224 @@ def remove_void_overlay(ext, pthout):
 
 
 def max_pixel_value(img):
-    message_out.append("Max Pixel Value :" + str(np.amax(img)))
-
+    print("Max Pixel Value :", np.amax(img))
     return
 
 
-# -------------------- Averager -----------------------------
-
-
-def normalized_merger(f_name, lst):
-    summerized_result_new = [
-        f_name, mean(lst[1]),
-        mean(lst[2]),
-        mean(lst[3]),
-        mean(lst[4])
-    ]
-
-    for i in range(1, 4):
-        max_val = max(lst[i + 1])
-        normalized = summerized_result_new[i + 1] * 100 / max_val
-        summerized_result_new.append(normalized)
-
-    return summerized_result_new
-
-
 # ----------------- Image Processing -------------------------------------
-def main(f, final_lst):
+def main():
 
-    global gray, original_image_for_outline, overlay_image, image_file_name, path_output, message_out, num_total_contours
+    global gray, original_image_for_outline, overlay_image
 
-    summerized_result = [f, [], [], [], []]
-    num_total_contours = 0
-
-    message_out = []
-    image_file_name = f
-    path_output = "outputs/" + f + "/"
-
-    if not os.path.exists(path_output):
-        os.makedirs(path_output)
-
-    # ----------------------Setting--------------------------------------------
-    scriptDir = os.path.dirname(os.path.realpath(__file__))
-    filepath = os.path.join(image_source_folder, image_file_name)
-    # ------------------ File Extension Checker--------------------------------
-
-    file_extention_check(filepath, f)
+    file_extention_check(filepath)
     image_information(image)
-
-    if detailed_output:
-        output_generator()
-
+    output_generator()
+    output_cleaner(path_output)
     transparent_img_generator(main_height, main_width, path_output)
     image_duplicator(image)
 
     for k in ch.keys():
-        if enable_channel_for_analysis[k]:
-            # ?
-            filtered_img = np.zeros(image.shape).astype(np.uint8)
-            filtered_img_removed_contours = np.zeros(
-                image.shape).astype(np.uint8)
+        # ?
+        filtered_img = np.zeros(image.shape).astype(np.uint8)
+        filtered_img_removed_contours = np.zeros(image.shape).astype(np.uint8)
 
-            # Pick Each Color from Original image
-            filtered_img[:, :, ch[k]] = image[:, :, ch[k]]
+        # Pick Each Color from Original image
+        filtered_img[:, :, ch[k]] = image[:, :, ch[k]]
 
-            max_pixel_value(filtered_img)
+        max_pixel_value(filtered_img)
 
-            # Generating single color output file
-            cv2.imwrite(os.path.join(path_output + "{}-RGB.png".format(k)),
-                        filtered_img)
+        # Generating single color output file
+        cv2.imwrite(os.path.join("outputs/{}-RGB.png".format(k)), filtered_img)
 
-            # Grayscale filter on single color output
-            # gray = cv2.cvtColor(filtered_img, cv2.COLOR_BGR2GRAY)
-            gray = filtered_img[:, :, ch[k]]
+        # Grayscale filter on single color output
+        # gray = cv2.cvtColor(filtered_img, cv2.COLOR_BGR2GRAY)
+        gray = filtered_img[:, :, ch[k]]
 
-            # Apply Threshold on grayscaled image
-            threshold = threshold_apply(enable_adp_threshold[k],
-                                        Adp_Threshold_vals[k], Threshold_vals[k])
+        # Apply Threshold on grayscaled image
+        threshold = threshold_apply(
+            enable_adp_threshold[k], Adp_Threshold_vals[k], Threshold_vals[k]
+        )
 
-            # Generating grayscaled with applied threshold
-            cv2.imwrite(os.path.join(path_output, "Threshold-{}.png".format(k)),
-                        threshold)
+        # Generating grayscaled with applied threshold
+        cv2.imwrite(os.path.join(path_output, "Threshold-{}.png".format(k)), threshold)
 
-            # Contour detection logic
-            contours, hierarchy = cv2.findContours(threshold, cv2.RETR_TREE,
-                                                   cv2.CHAIN_APPROX_SIMPLE)
+        # Contour detection logic
+        contours, hierarchy = cv2.findContours(
+            threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+        )
 
-            if contours_details_reporting is True:
-                report_contours_point(contours)
+        if contours_details_reporting is True:
+            report_contours_point(contours)
 
-            # Sort all contours by largest to Smallest Size
-            # We would use this sorted contours for the rest of the process
-            sorted_contours = sorted(
-                contours, key=cv2.contourArea, reverse=True)
+        # Sort all contours by largest to Smallest Size
+        # We would use this sorted contours for the rest of the process
+        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
 
-            # counting number of detected contours
-            message_out.append(
-                "Number of contours detected in {} Channel = {}".format(
-                    k, len(contours)))
+        # counting number of detected contours
+        print("Number of contours detected in {} Channel = {}".format(k, len(contours)))
 
-            # Check if threshold is appropriate
-            if len(sorted_contours) > 0:
+        # Check if threshold is appropriate
+        if len(sorted_contours) > 0:
 
-                # 1st Filter
-                contour_size, filtered_contours = size_filter(
-                    sorted_contours, min_size_limit[k], max_size_limit[k])
+            # 1st Filter
+            contour_size, filtered_contours = size_filter(
+                sorted_contours, min_size_limit[k], max_size_limit[k]
+            )
 
-                # Protect algorithm to face error when minimum size threshold
-                # was too high or we just have 1 or 2 contours
-                # which statitical functions doesn't work well
-                if len(contour_size) > 2:
+            # Protect algorithm to face error when minimum size threshold
+            # was too high or we just have 1 or 2 contours
+            # which statitical functions doesn't work well
+            if len(contour_size) > 2:
 
-                    # Number of accepted contours in size filter process
-                    contours_num_1st = len(filtered_contours)
+                # Number of accepted contours in size filter process
+                contours_num_1st = len(filtered_contours)
 
-                    # 2nd filter to remove tails (Ratio Filter)
-                    if enable_ratio_filter is True:
-                        filtered_contours, contours_num_2nd = ratio_filter(
-                            filtered_contours, contour_size,
-                            Remove_Ratio_Margin_ch[k])
+                # 2nd filter to remove tails (Ratio Filter)
+                if enable_ratio_filter is True:
+                    filtered_contours, contours_num_2nd = ratio_filter(
+                        filtered_contours, contour_size, Remove_Ratio_Margin_ch[k]
+                    )
 
-                    # 3rd filter (Ellipse Filter)
-                    if enable_ellipse_filter is True:
-                        filtered_contours = ellipticity_filter(
-                            filtered_contours,
-                            enable_hist_generator,
-                            hist_subplot_indx[k],
-                            k,
-                            Critical_ratio_Circle[k],
-                            Critical_ratio_Ellipse[k],
-                        )
-
-                    message_out.append("Maximum size was:" +
-                                       str(cv2.contourArea(sorted_contours[0])))
-
-                    # Draw outlines on signle color image
-                    filtered_img = cv2.drawContours(
-                        filtered_img,
+                # 3rd filter (Ellipse Filter)
+                if enable_ellipse_filter is True:
+                    filtered_contours = ellipticity_filter(
                         filtered_contours,
-                        -1,
+                        enable_hist_generator,
+                        hist_subplot_indx[k],
+                        k,
+                        Critical_ratio_Circle[k],
+                        Critical_ratio_Ellipse[k],
+                    )
+
+                print("Maximum size was:", cv2.contourArea(sorted_contours[0]), "\n")
+
+                # Draw outlines on signle color image
+                filtered_img = cv2.drawContours(
+                    filtered_img,
+                    filtered_contours,
+                    -1,
+                    Genral_Borders_Color,
+                    single_clr_border_thikness,
+                )
+
+                # 4th Filter (Selection Filter)
+                if enable_selection_filter[k] is True:
+                    filtered_contours = selection_filter(
+                        filtered_contours,
+                        k,
+                        filtered_img,
+                        path_output,
                         Genral_Borders_Color,
                         single_clr_border_thikness,
                     )
 
-                    # 4th Filter (Selection Filter)
-                    if enable_selection_filter[k] is True:
-                        filtered_contours = selection_filter(
-                            filtered_contours,
-                            k,
-                            filtered_img,
-                            path_output,
-                            Genral_Borders_Color,
-                            single_clr_border_thikness,
-                        )
-
-                    # Generate Largest Contour in each color
-                    if enable_most_biggest_contours_output is True:
-                        most_bigest_contours_drawer(
-                            filtered_img_removed_contours,
-                            filtered_contours,
-                            Channel_Border_Color_tr[k],
-                            fill_black_bgd,
-                            path_output,
-                            k,
-                            desired_number,
-                        )
-
-                    # Result list contains all contours information in the certain channel
-                    result_lst = color_combination_calculator(
-                        filtered_contours, image_copy)
-
-                    for i in range(1, 5):
-                        summerized_result[i].extend(result_lst[i - 1])
-
-                    # Generating single color output with contour outlines
-                    cv2.imwrite(
-                        os.path.join(path_output, "{}-Bordered.png".format(k)),
-                        filtered_img,
-                    )
-
-                    # Generating full colored output with contour outlines -----------
-                    # Draw outlines on original full colored image
-                    original_image_for_outline = cv2.drawContours(
-                        original_image_for_outline,
+                # Generate Largest Contour in each color
+                if enable_most_biggest_contours_output is True:
+                    most_bigest_contours_drawer(
+                        filtered_img_removed_contours,
                         filtered_contours,
-                        -1,
-                        Channel_Border_Color[k],
-                        full_clr_border_thikness,
-                    )
-
-                    # (Original image with regions)
-                    cv2.imwrite(
-                        os.path.join(path_output,
-                                     "Original-Bordered.png".format(k)),
-                        original_image_for_outline,
-                    )
-
-                    # Recallingoutput original bordered image for the next iteration
-                    original_image_for_outline = cv2.imread(
-                        os.path.join(path_output, "Original-Bordered.png"))
-
-                    # Generating Black-Background Overlay layer image--------------------------
-                    overlay_image = cv2.drawContours(
-                        overlay_image,
-                        filtered_contours,
-                        -1,
                         Channel_Border_Color_tr[k],
                         fill_black_bgd,
+                        path_output,
+                        k,
+                        desired_number,
                     )
 
-                    cv2.imwrite(
-                        os.path.join(
-                            path_output, "BlackBackGround-overlay.png"),
-                        overlay_image,
-                    )
+                color_combination_calculator(filtered_contours, image_copy)
 
-                    overlay_image = cv2.imread(
-                        os.path.join(path_output, "BlackBackGround-overlay.png"))
+                # Generating single color output with contour outlines
+                cv2.imwrite(
+                    os.path.join(path_output, "{}-Bordered.png".format(k)),
+                    filtered_img,
+                )
 
-                    # Generating Transparent Overlay layer image----------------------------
-                    transparent_layer_generator(overlay_image, path_output)
+                # Generating full colored output with contour outlines -----------
+                # Draw outlines on original full colored image
+                original_image_for_outline = cv2.drawContours(
+                    original_image_for_outline,
+                    filtered_contours,
+                    -1,
+                    Channel_Border_Color[k],
+                    full_clr_border_thikness,
+                )
 
-                else:
-                    message_out.append(
-                        "------------------------- Warning --------------------------------"
-                    )
-                    message_out.append((
-                        "Error! The {}-Minimum threshold Size is too high, which leads to find no contour."
-                    ).format(k))
-                    message_out.append("We have just found " +
-                                       str(len(contour_size)) + "contours!")
-                    message_out.append(
-                        "------------------------- ------- --------------------------------\n"
-                    )
+                # (Original image with regions)
+                cv2.imwrite(
+                    os.path.join(path_output, "Original-Bordered.png".format(k)),
+                    original_image_for_outline,
+                )
+
+                # Recallingoutput original bordered image for the next iteration
+                original_image_for_outline = cv2.imread(
+                    os.path.join(path_output, "Original-Bordered.png")
+                )
+
+                # Generating Black-Background Overlay layer image--------------------------
+                overlay_image = cv2.drawContours(
+                    overlay_image,
+                    filtered_contours,
+                    -1,
+                    Channel_Border_Color_tr[k],
+                    fill_black_bgd,
+                )
+
+                cv2.imwrite(
+                    os.path.join(path_output, "BlackBackGround-overlay.png"),
+                    overlay_image,
+                )
+
+                overlay_image = cv2.imread(
+                    os.path.join(path_output, "BlackBackGround-overlay.png")
+                )
+
+                # Generating Transparent Overlay layer image----------------------------
+                transparent_layer_generator(overlay_image, path_output)
 
             else:
-                message_out.append(
-                    "------------------------- Warning --------------------------------"
+                print(
+                    "\n------------------------- Warning --------------------------------"
                 )
-                message_out.append((
+                print(
+                    (
+                        "Error! The {}-Minimum threshold Size is too high, which leads to find no contour."
+                    ).format(k)
+                )
+                print("We have just found ", len(contour_size), "contours!")
+                print(
+                    "------------------------- ------- --------------------------------\n"
+                )
+
+        else:
+            print(
+                "\n------------------------- Warning --------------------------------"
+            )
+            print(
+                (
                     "Error! The {}-Threshold is too high, which leads to find no contour."
-                ).format(k))
-                message_out.append(
-                    "------------------------- ------- --------------------------------"
-                )
-
-            num_total_contours += len(filtered_contours)
-
-    # This variables are subjected to multiprocessing result recording
-    newlist = normalized_merger(f, summerized_result)
-    newlist.insert(1, (num_total_contours))
-    final_lst.append(newlist)
+                ).format(k)
+            )
+            print(
+                "------------------------- ------- --------------------------------\n"
+            )
 
     # ----------------------------------------------------------------------------
+    if enable_hist_generator is True:
+        fig1.savefig(os.path.join(path_output, "circular ratio hist.png"))
+        fig2.savefig(os.path.join(path_output, "ellipticity ratio.png"))
 
     # Generate a combination of overlay image on the original image
-    added_image = cv2.addWeighted(overlay_image, overlay_transparency, image,
-                                  1 - overlay_transparency, 0)
+    added_image = cv2.addWeighted(
+        overlay_image, overlay_transparency, image, 1 - overlay_transparency, 0
+    )
     cv2.imwrite(os.path.join(path_output, "combined.png"), added_image)
 
     remove_void_overlay(ext, path_output)
 
-    message_out.append("Successful!\n\n")
-    message_out = '\n'.join(message_out)
-    print(message_out)
-    #cv2.waitKey(0)
-
-    return
-
-
-def run():
-    output_cleaner()
-    
-    final_result = []
-    final_result.append([
-            'File name', '# contours', 'Size avg', 'R avg', 'B avg', 'G avg', 'N. R avg',
-            'N. B avg', 'N. G avg'
-        ])
-        
-    for f in files:
-        main(f,final_result)
-        
-    
-    with open('outputs/reduced_output.txt', 'a') as filehandle:
-            for listitem in final_result:
-                for element in listitem:
-                    filehandle.write('%s\t' % element)
-
-                filehandle.write('\n') 
-                
-    print(len(files), "files processed.\n")
     # End of Measuring time
     end_time = time.monotonic()
     print("\nDuration:", timedelta(seconds=(end_time - start_time)))
 
-run()
+    print("Successful!")
+    cv2.waitKey(0)
+
+    return
